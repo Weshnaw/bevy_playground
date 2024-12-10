@@ -1,15 +1,23 @@
-use bevy::prelude::*;
+use bevy::{pbr::wireframe::{Wireframe, WireframePlugin}, prelude::*};
 use iyes_perf_ui::prelude::*;
+
+use crate::terrain_gen::Terrain;
 
 pub struct DebugPlugin;
 
 impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
+        // Allow wireframe view
+        app.add_plugins(WireframePlugin);
+        // PerfUI
         app.add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin);
         app.add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin);
         app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
         app.add_plugins(PerfUiPlugin);
-        app.add_systems(Update, toggle.before(iyes_perf_ui::PerfUiSet::Setup));
+
+        // Keyboard toggle checks
+        app.add_systems(Update, toggle_fps.before(iyes_perf_ui::PerfUiSet::Setup));
+        app.add_systems(Update, toggle_wireframe);
     }
 }
 
@@ -27,7 +35,7 @@ fn perf_ui_entries() -> impl Bundle {
     PerfUiAllEntries::default()
 }
 
-fn toggle(
+fn toggle_fps(
     mut commands: Commands,
     q_root: Query<Entity, With<PerfUiRoot>>,
     kbd: Res<ButtonInput<KeyCode>>,
@@ -42,4 +50,20 @@ fn toggle(
             commands.spawn(perf_ui_entries());
         }
     }
+}
+
+fn toggle_wireframe(
+    mut commands: Commands,
+    landscapes_wireframes: Query<Entity, (With<Terrain>, With<Wireframe>)>,
+    landscapes: Query<Entity, (With<Terrain>, Without<Wireframe>)>,
+    kbd: Res<ButtonInput<KeyCode>>,
+) {
+   if kbd.just_pressed(KeyCode::F11) {
+        for terrain in &landscapes {
+            commands.entity(terrain).insert(Wireframe);
+        }
+        for terrain in &landscapes_wireframes {
+            commands.entity(terrain).remove::<Wireframe>();
+        }
+   } 
 }
