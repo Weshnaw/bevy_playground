@@ -11,3 +11,17 @@ pub(crate) enum ApplicationStates {
     AssetLoading,
     LoadingComplete,
 }
+
+    // commands.spawn((
+    //     Name::new("Character"),
+    //     SceneRoot(
+    //         player.player.clone()
+    //     )
+    // ));
+
+    // commands.spawn((
+    //     Name::new("Level"),
+    //     SceneRoot(
+    //         levels.level_01.clone()
+    //     )
+    // ));

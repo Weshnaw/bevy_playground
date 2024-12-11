@@ -18,7 +18,7 @@ impl Plugin for CameraPlugin {
 }
 
 #[derive(Component)]
-struct Player;
+pub(crate) struct Player;
 
 #[derive(Component)]
 struct PlayerCamera;
@@ -49,20 +49,6 @@ pub fn setup_camera(
             ..default()
         })),
     ));
-
-    // commands.spawn((
-    //     Name::new("Character"),
-    //     SceneRoot(
-    //         player.player.clone()
-    //     )
-    // ));
-
-    // commands.spawn((
-    //     Name::new("Level"),
-    //     SceneRoot(
-    //         levels.level_01.clone()
-    //     )
-    // ));
 }
 
 fn control_player(
