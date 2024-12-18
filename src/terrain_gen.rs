@@ -8,14 +8,14 @@ use itertools::Itertools;
 use light_consts::lux;
 use noise::{BasicMulti, NoiseFn, Perlin};
 
-use crate::camera::Player;
+use crate::{ApplicationStates, camera::Player};
 
 pub struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(TerrainStore::default());
-        app.add_systems(Startup, setup_terrain);
+        app.add_systems(OnEnter(ApplicationStates::LoadingComplete), setup_terrain);
         app.add_systems(Update, manage_chunks);
     }
 }
