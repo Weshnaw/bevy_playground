@@ -15,7 +15,7 @@ fn main() {
         }))
         .add_plugins(DebugPlugin)
         .add_plugins(AssetsPlugin)
-        .add_plugins(TerrainPlugin)
         .add_plugins(CameraPlugin)
+        .add_plugins(TerrainPlugin)
         .run();
 }

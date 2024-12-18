@@ -176,3 +176,52 @@ impl Command for SpawnTerrain {
         ));
     }
 }
+
+#[cfg(test)]
+mod test {
+    use bevy::state::app::StatesPlugin;
+
+    use super::*;
+
+    fn minimal_app() -> App {
+        let mut app = App::new();
+        
+        app.add_plugins((
+            MinimalPlugins,
+            StatesPlugin::default(),
+            AssetPlugin::default(),
+        ));
+
+        app.insert_resource(Assets::<Mesh>::default());
+        app.insert_resource(Assets::<StandardMaterial>::default());
+
+        app
+    }
+
+    #[test]
+    fn generate_terrain() {
+        let mut app = minimal_app();
+
+        app.add_plugins(TerrainPlugin);
+
+        // enter loading complete
+        app.insert_state(ApplicationStates::AssetLoading);
+        app.update();
+
+        assert!(app.world().get_resource::<TerrainStore>().is_some());
+        assert_eq!(
+            app.world().get_resource::<TerrainStore>().unwrap().0.len(),
+            0
+        );
+
+        // enter loading complete
+        app.insert_state(ApplicationStates::LoadingComplete);
+        app.update();
+
+        assert!(app.world().get_resource::<TerrainStore>().is_some());
+        assert_eq!(
+            app.world().get_resource::<TerrainStore>().unwrap().0.len(),
+            9
+        );
+    }
+}
