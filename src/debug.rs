@@ -1,8 +1,6 @@
 use bevy::{pbr::wireframe::{Wireframe, WireframePlugin}, prelude::*};
 use iyes_perf_ui::prelude::*;
 
-use crate::terrain_gen::Terrain;
-
 pub struct DebugPlugin;
 
 impl Plugin for DebugPlugin {
@@ -52,17 +50,21 @@ fn toggle_fps(
     }
 }
 
+
+#[derive(Component)]
+pub(crate) struct WireframeObject;
+
 fn toggle_wireframe(
     mut commands: Commands,
-    landscapes_wireframes: Query<Entity, (With<Terrain>, With<Wireframe>)>,
-    landscapes: Query<Entity, (With<Terrain>, Without<Wireframe>)>,
+    obj_wireframes: Query<Entity, (With<WireframeObject>, With<Wireframe>)>,
+    obj: Query<Entity, (With<WireframeObject>, Without<Wireframe>)>,
     kbd: Res<ButtonInput<KeyCode>>,
 ) {
    if kbd.just_pressed(KeyCode::F11) {
-        for terrain in &landscapes {
+        for terrain in &obj {
             commands.entity(terrain).insert(Wireframe);
         }
-        for terrain in &landscapes_wireframes {
+        for terrain in &obj_wireframes {
             commands.entity(terrain).remove::<Wireframe>();
         }
    } 

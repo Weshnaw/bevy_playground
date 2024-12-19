@@ -4,6 +4,7 @@ pub mod assets;
 pub mod debug;
 pub mod terrain_gen;
 pub mod camera;
+pub mod marching_cube;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
 pub(crate) enum ApplicationStates {

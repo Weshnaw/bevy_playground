@@ -8,7 +8,7 @@ use itertools::Itertools;
 use light_consts::lux;
 use noise::{BasicMulti, NoiseFn, Perlin};
 
-use crate::{ApplicationStates, camera::Player};
+use crate::{camera::Player, debug::WireframeObject, ApplicationStates};
 
 pub struct TerrainPlugin;
 
@@ -173,6 +173,7 @@ impl Command for SpawnTerrain {
             MeshMaterial3d(material),
             Transform::from_xyz(self.0.x as f32 * size, 0., self.0.y as f32 * size),
             Terrain,
+            WireframeObject
         ));
     }
 }
@@ -203,10 +204,6 @@ mod test {
         let mut app = minimal_app();
 
         app.add_plugins(TerrainPlugin);
-
-        // enter loading complete
-        app.insert_state(ApplicationStates::AssetLoading);
-        app.update();
 
         assert!(app.world().get_resource::<TerrainStore>().is_some());
         assert_eq!(

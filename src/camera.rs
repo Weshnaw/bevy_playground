@@ -13,7 +13,7 @@ impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PanOrbitCameraPlugin);
         app.add_systems(OnEnter(ApplicationStates::LoadingComplete), setup_camera);
-        app.add_systems(Update, (control_player, sync_camera_to_player).chain());
+        app.add_systems(Update, (control_player, /*sync_camera_to_player*/).chain());
     }
 }
 
@@ -25,30 +25,30 @@ struct PlayerCamera;
 
 pub fn setup_camera(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
+    mut _meshes: ResMut<Assets<Mesh>>,
+    mut _materials: ResMut<Assets<StandardMaterial>>,
+    mut _images: ResMut<Assets<Image>>,
 ) {
     info!("Setting up camera");
 
     // spawn a camera to be able to see anything
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0., 20., -75.).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
+        Transform::from_xyz(10., 10., 10.).looking_at(Vec3::new(1., 0., 1.), Vec3::Y),
         PanOrbitCamera::default(),
         PlayerCamera, // OrderIndependentTransparencySettings::default(),
                       // Msaa::Off
     ));
 
-    commands.spawn((
-        Player,
-        Mesh3d(meshes.add(Cuboid::default())),
-        Transform::from_xyz(0., 10., 0.),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color_texture: Some(images.add(uv_debug_texture())),
-            ..default()
-        })),
-    ));
+    // commands.spawn((
+    //     Player,
+    //     Mesh3d(meshes.add(Cuboid::default())),
+    //     Transform::from_xyz(0., 10., 0.),
+    //     MeshMaterial3d(materials.add(StandardMaterial {
+    //         base_color_texture: Some(images.add(uv_debug_texture())),
+    //         ..default()
+    //     })),
+    // ));
 }
 
 fn control_player(
@@ -76,7 +76,7 @@ fn control_player(
     }
 }
 
-fn sync_camera_to_player(
+fn _sync_camera_to_player(
     players: Query<
         &Transform,
         With<Player>,
@@ -84,7 +84,7 @@ fn sync_camera_to_player(
     mut camera: Query<&mut PanOrbitCamera, With<PlayerCamera>>,
 ) {
     let Ok(player) = players.get_single() else {
-        warn!("Multiple players detected, failing to sync camera");
+        warn!("No players detected, failing to sync camera");
         return;
     };
 
@@ -97,7 +97,7 @@ fn sync_camera_to_player(
     );
 }
 
-fn uv_debug_texture() -> Image {
+fn _uv_debug_texture() -> Image {
     const TEXTURE_SIZE: usize = 8;
 
     let mut palette: [u8; 32] = [
