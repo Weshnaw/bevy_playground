@@ -3,6 +3,9 @@ name = "bevy_playground"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib","lib"]
+
 [dependencies]
 bevy = { version = "0.15.0", features = ["dynamic_linking"] }
 tracing = "0.1.41"
