@@ -1,7 +1,5 @@
 // use std::collections::BTreeMap;
 
-use std::collections::HashMap;
-
 use crate::{ApplicationStates, debug::WireframeObject};
 use bevy::{
     asset::RenderAssetUsages,
@@ -9,6 +7,7 @@ use bevy::{
     prelude::*,
     render::mesh::{Indices, PrimitiveTopology},
 };
+use itertools::Itertools;
 use light_consts::lux;
 use noise::{BasicMulti, NoiseFn, Perlin};
 
@@ -25,53 +24,9 @@ impl Plugin for MarchingCubePlugin {
 #[derive(Component)]
 pub(crate) struct MarchedCube;
 
-fn cube_idx_to_mesh(chunk: Vec<Vec<Vec<usize>>>) -> Mesh {
-    let mut indices: Vec<u32> = vec![];
-    let mut vertex_map = HashMap::new();
-    let mut vertices: Vec<[f32; 3]> = vec![];
-
-    for (x, slice) in chunk.iter().enumerate() {
-        for (y, slice) in slice.iter().enumerate() {
-            for (z, idx) in slice
-                .iter()
-                .filter(|idx| idx != &&0 && idx != &&255)
-                .enumerate()
-            {
-                for vertex_id in TRIANGULATION_LOOKUP[*idx].iter().rev() {
-                    let vertex = VERTICE_LOOKUP[*vertex_id as usize];
-                    let vertex = [
-                        vertex[0] as usize + x*2,
-                        vertex[1] as usize + y*2,
-                        vertex[2] as usize + z*2,
-                    ];
-                    match vertex_map.get(&vertex) {
-                        Some(id) => {
-                            indices.push(*id);
-                        }
-                        None => {
-                            vertex_map.insert(vertex, vertices.len() as u32);
-                            indices.push(vertices.len() as u32);
-                            vertices.push([vertex[0] as f32, vertex[1] as f32, vertex[2] as f32]);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::default(),
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
-    .with_inserted_indices(Indices::U32(indices))
-    .with_computed_normals()
-}
-
 // TODO:
-// - Compute Shader?
-// - Calculate larger meshes based on several marched cubes
-// - Minimimize uneeded triangles:
+// [ ] - Compute Shader
+// [ ] - ??? Minimimize uneeded triangles:
 //   - greedy meshing: https://0fps.net/2012/06/30/meshing-in-a-minecraft-game/
 //     - https://vodacek.zvb.cz/archiv/339.html
 fn setup_marched_cube_example(
@@ -87,74 +42,153 @@ fn setup_marched_cube_example(
         },
         Transform::from_xyz(0., 20., 75.).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
     ));
+
     let noise = BasicMulti::<Perlin>::new(1624);
-
-    let calc = |x, y, z| {
-        let height = (noise.get([x as f64 / 12., z as f64 / 12.]) * 1.) + 1.;
-        y as f64 <= height
-    };
-
-    let mut idx = vec![];
-    let mesh_handle = meshes.add(Cuboid::from_size(vec3(0.1, 0.1, 0.1)).mesh());
-    let material_handle = materials.add(Color::WHITE);
-    for x in 0..100 {
-        let mut x_idx = vec![];
-        for y in 0..100 {
-            let mut y_idx = vec![];
-            for z in 0..100 {
-                let mut idx = 0;
-                if calc(x, y, z) {
-                    idx |= 0b00000001;
-                    commands.spawn((
-                        Mesh3d(mesh_handle.clone()),
-                        MeshMaterial3d(material_handle.clone()),
-                        Transform::from_xyz(x as f32 * 2., y as f32 * 2., z as f32 * 2.),
-                        // WireframeObject,
-                    ));
-                }
-                if calc(x, y, z + 1) {
-                    idx |= 0b00000010;
-                }
-                if calc(x + 1, y, z + 1) {
-                    idx |= 0b00000100;
-                }
-                if calc(x + 1, y, z) {
-                    idx |= 0b00001000;
-                }
-                if calc(x, y + 1, z) {
-                    idx |= 0b00010000;
-                }
-                if calc(x, y + 1, z + 1) {
-                    idx |= 0b00100000;
-                }
-                if calc(x + 1, y + 1, z + 1) {
-                    idx |= 0b01000000; // 0,0,0
-                }
-                if calc(x + 1, y + 1, z) {
-                    idx |= 0b10000000;
-                }
-                y_idx.push(idx);
-                // 0b10000000 -> 1,1,0
-                // 0b01000000 -> 1,1,1
-                // 0b00100000 -> 0,1,1
-                // 0b00010000 -> 0,1,0
-                // 0b00001000 -> 1,0,0
-                // 0b00000100 -> 1,0,1
-                // 0b00000010 -> 0,0,1
-                // 0b00000001 -> 0,0,0
-            }
-
-            x_idx.push(y_idx);
-        }
-        idx.push(x_idx);
+    for (x, z) in (-1..=1).cartesian_product(-1..=1) {
+        info!(?x, ?z);
+        let chunk = TerrainChunk {
+            coords: (x, 0, z),
+            size: 100,
+            noise: noise.clone(),
+        };
+        commands.spawn((
+            MarchedCube,
+            Mesh3d(meshes.add(chunk.mesh())),
+            MeshMaterial3d(materials.add(Color::WHITE)),
+            WireframeObject,
+            Transform::from_xyz((x * 100) as f32, 0., (z * 100) as f32),
+        ));
     }
 
-    commands.spawn((
-        MarchedCube,
-        Mesh3d(meshes.add(cube_idx_to_mesh(idx))),
-        MeshMaterial3d(materials.add(Color::WHITE)),
-        WireframeObject,
-    ));
+    // commands.spawn((
+    //     Mesh3d(meshes.add(Cuboid::from_corners(vec3(0., 0., 0.), vec3(100., 0.1, 100.)))),
+    //     MeshMaterial3d(materials.add(Color::linear_rgb(1., 0., 0.))),
+    // ));
+}
+
+pub struct TerrainChunk {
+    coords: (i32, i32, i32),
+    size: u32,
+    noise: BasicMulti<Perlin>,
+}
+
+impl TerrainChunk {
+    fn value_from_noise(&self, translation: Vec3) -> f32 {
+        let height = (self
+            .noise
+            .get([translation.x as f64 / 25., translation.z as f64 / 25.])
+            * 10.)
+            + 5.;
+
+        if translation.y <= (height.floor() as f32).max(0.) {
+            0.
+        } else if translation.y >= height.ceil() as f32 {
+            1.
+        } else {
+            height.fract() as f32
+        }
+    }
+
+    fn mesh(&self) -> Mesh {
+        let chunk_size = self.size;
+        let iso_level = 0.7;
+
+        let offset = Vec3::new(
+            self.coords.0 as f32 * self.size as f32,
+            self.coords.1 as f32 * self.size as f32,
+            self.coords.2 as f32 * self.size as f32,
+        );
+
+        let triangles = (0..chunk_size)
+            .flat_map(|x| {
+                (0..chunk_size).flat_map(move |y| {
+                    (0..chunk_size).flat_map(move |z| {
+                        let translation = Vec3::new(x as f32, y as f32, z as f32);
+                        let cell_points = OFFSET_TABLE.map(|point| {
+                            let point = translation + point;
+                            (point, self.value_from_noise(point + offset))
+                        });
+                        
+                        calculate_single_cube_polygons(&cell_points, iso_level)
+                    })
+                })
+            })
+            .collect_vec();
+
+        // TODO: FIX: this duplicates vertices for EVERY triangle
+        let vertices = triangles
+            .iter()
+            .flat_map(|triangle| [triangle.a, triangle.b, triangle.c])
+            .map(|vector| [vector.x, vector.y, vector.z])
+            .collect_vec();
+        let indices = (0..vertices.len()).map(|index| index as u32).collect_vec();
+        let uvs = (0..vertices.len()).map(|_| [0.0, 0.0]).collect_vec();
+        let normals: Vec<[f32; 3]> = indices
+            .chunks(3)
+            .flat_map(|triangle| {
+                let a = Vec3::from(vertices[(triangle)[0] as usize]);
+                let b = Vec3::from(vertices[(triangle)[1] as usize]);
+                let c = Vec3::from(vertices[(triangle)[2] as usize]);
+
+                let normal = (b - a).cross(c - a).normalize();
+
+                [normal.into(), normal.into(), normal.into()]
+            })
+            .collect();
+
+        Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+    }
+}
+
+#[derive(Debug)]
+pub struct Triangle {
+    pub a: Vec3,
+    pub b: Vec3,
+    pub c: Vec3,
+}
+
+fn calculate_single_cube_polygons(point_map: &[(Vec3, f32); 8], iso: f32) -> Vec<Triangle> {
+    let mut idx: usize = 0;
+    for (i, (_, point)) in point_map.iter().enumerate() {
+        if point < &iso {
+            idx |= 1 << i;
+        }
+    }
+
+    let edge = EDGE_LOOKUP[idx];
+
+    if edge == 0 {
+        return vec![];
+    }
+
+    let mut vertex_list: [Option<Vec3>; 12] = [None; 12];
+    for (v_id, (a, b)) in INTERPOLATION_TABLE.iter().enumerate() {
+        if edge & (1 << v_id) > 0 {
+            vertex_list[v_id] = Some(interpolate(iso, &point_map[*a], &point_map[*b]))
+        }
+    }
+
+    TRIANGULATION_LOOKUP[idx]
+        .chunks(3)
+        .map(|chunk| {
+            let a = vertex_list[chunk[0] as usize].expect("Missing interpolated vertex for a");
+            let b = vertex_list[chunk[1] as usize].expect("Missing interpolated vertex for b");
+            let c = vertex_list[chunk[2] as usize].expect("Missing interpolated vertex for c");
+
+            Triangle { a, b, c }
+        })
+        .collect_vec()
+}
+
+fn interpolate(_iso: f32, a: &(Vec3, f32), b: &(Vec3, f32)) -> Vec3 {
+    (a.0 + b.0) / vec3(2., 2., 2.)
 }
 
 #[cfg(test)]
@@ -182,38 +216,21 @@ mod test {
         app
     }
 
-    // #[rstest::rstest]
-    // #[test]
-    // fn test_cube(mut app: App) {
-    //     app.update();
-    //     // enter loading complete
-    //     app.insert_state(ApplicationStates::LoadingComplete);
-    //     app.update();
+    #[rstest::rstest]
+    #[test]
+    fn test_cube(mut app: App) {
+        app.update();
+        // enter loading complete
+        app.insert_state(ApplicationStates::LoadingComplete);
+        app.update();
 
-    //     let actual = app
-    //         .world_mut()
-    //         .query::<&MarchedCube>()
-    //         .get_single(app.world());
-    //     assert!(actual.is_ok(), "There should be exactly 1 cube.");
-    // }
+        let actual = app
+            .world_mut()
+            .query::<&MarchedCube>()
+            .get_single(app.world());
+        assert!(actual.is_ok(), "There should be exactly 1 cube.");
+    }
 }
-
-// Marching cubes pre-computed tables
-const VERTICE_LOOKUP: [[u8; 3]; 12] = [
-    //   x front    y up    z right
-    [0, 0, 1], // 0
-    [1, 0, 2], // 1
-    [2, 0, 1], // 2
-    [1, 0, 0], // 3
-    [0, 2, 1], // 4
-    [1, 2, 2], // 5
-    [2, 2, 1], // 6
-    [1, 2, 0], // 7
-    [0, 1, 0], // 8
-    [0, 1, 2], // 9
-    [2, 1, 2], // 10
-    [2, 1, 0], // 11
-];
 
 const TRIANGULATION_LOOKUP: [&[u8]; 256] = [
     &[],
@@ -223,7 +240,7 @@ const TRIANGULATION_LOOKUP: [&[u8]; 256] = [
     &[1, 2, 10],
     &[0, 8, 3, 1, 2, 10],
     &[9, 2, 10, 0, 2, 9],
-    &[2, 8, 3, 2, 10, 8, 10, 9, 8], //1
+    &[2, 8, 3, 2, 10, 8, 10, 9, 8],
     &[3, 11, 2],
     &[0, 11, 2, 8, 11, 0],
     &[1, 9, 0, 2, 3, 11],
@@ -231,7 +248,7 @@ const TRIANGULATION_LOOKUP: [&[u8]; 256] = [
     &[3, 10, 1, 11, 10, 3],
     &[0, 10, 1, 0, 8, 10, 8, 11, 10],
     &[3, 9, 0, 3, 11, 9, 11, 10, 9],
-    &[9, 8, 10, 10, 8, 11], //2
+    &[9, 8, 10, 10, 8, 11],
     &[4, 7, 8],
     &[4, 3, 0, 7, 3, 4],
     &[0, 1, 9, 8, 4, 7],
@@ -472,4 +489,53 @@ const TRIANGULATION_LOOKUP: [&[u8]; 256] = [
     &[0, 9, 1],
     &[0, 3, 8],
     &[],
+];
+
+const EDGE_LOOKUP: [u16; 256] = [
+    0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03,
+    0xe09, 0xf00, 0x190, 0x99, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c, 0x99c, 0x895, 0xb9f,
+    0xa96, 0xd9a, 0xc93, 0xf99, 0xe90, 0x230, 0x339, 0x33, 0x13a, 0x636, 0x73f, 0x435, 0x53c,
+    0xa3c, 0xb35, 0x83f, 0x936, 0xe3a, 0xf33, 0xc39, 0xd30, 0x3a0, 0x2a9, 0x1a3, 0xaa, 0x7a6,
+    0x6af, 0x5a5, 0x4ac, 0xbac, 0xaa5, 0x9af, 0x8a6, 0xfaa, 0xea3, 0xda9, 0xca0, 0x460, 0x569,
+    0x663, 0x76a, 0x66, 0x16f, 0x265, 0x36c, 0xc6c, 0xd65, 0xe6f, 0xf66, 0x86a, 0x963, 0xa69,
+    0xb60, 0x5f0, 0x4f9, 0x7f3, 0x6fa, 0x1f6, 0xff, 0x3f5, 0x2fc, 0xdfc, 0xcf5, 0xfff, 0xef6,
+    0x9fa, 0x8f3, 0xbf9, 0xaf0, 0x650, 0x759, 0x453, 0x55a, 0x256, 0x35f, 0x55, 0x15c, 0xe5c,
+    0xf55, 0xc5f, 0xd56, 0xa5a, 0xb53, 0x859, 0x950, 0x7c0, 0x6c9, 0x5c3, 0x4ca, 0x3c6, 0x2cf,
+    0x1c5, 0xcc, 0xfcc, 0xec5, 0xdcf, 0xcc6, 0xbca, 0xac3, 0x9c9, 0x8c0, 0x8c0, 0x9c9, 0xac3,
+    0xbca, 0xcc6, 0xdcf, 0xec5, 0xfcc, 0xcc, 0x1c5, 0x2cf, 0x3c6, 0x4ca, 0x5c3, 0x6c9, 0x7c0,
+    0x950, 0x859, 0xb53, 0xa5a, 0xd56, 0xc5f, 0xf55, 0xe5c, 0x15c, 0x55, 0x35f, 0x256, 0x55a,
+    0x453, 0x759, 0x650, 0xaf0, 0xbf9, 0x8f3, 0x9fa, 0xef6, 0xfff, 0xcf5, 0xdfc, 0x2fc, 0x3f5,
+    0xff, 0x1f6, 0x6fa, 0x7f3, 0x4f9, 0x5f0, 0xb60, 0xa69, 0x963, 0x86a, 0xf66, 0xe6f, 0xd65,
+    0xc6c, 0x36c, 0x265, 0x16f, 0x66, 0x76a, 0x663, 0x569, 0x460, 0xca0, 0xda9, 0xea3, 0xfaa,
+    0x8a6, 0x9af, 0xaa5, 0xbac, 0x4ac, 0x5a5, 0x6af, 0x7a6, 0xaa, 0x1a3, 0x2a9, 0x3a0, 0xd30,
+    0xc39, 0xf33, 0xe3a, 0x936, 0x83f, 0xb35, 0xa3c, 0x53c, 0x435, 0x73f, 0x636, 0x13a, 0x33,
+    0x339, 0x230, 0xe90, 0xf99, 0xc93, 0xd9a, 0xa96, 0xb9f, 0x895, 0x99c, 0x69c, 0x795, 0x49f,
+    0x596, 0x29a, 0x393, 0x99, 0x190, 0xf00, 0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c,
+    0x70c, 0x605, 0x50f, 0x406, 0x30a, 0x203, 0x109, 0x0,
+];
+
+const INTERPOLATION_TABLE: [(usize, usize); 12] = [
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 0),
+    (4, 5),
+    (5, 6),
+    (6, 7),
+    (7, 4),
+    (0, 4),
+    (1, 5),
+    (2, 6),
+    (3, 7),
+];
+
+const OFFSET_TABLE: [Vec3; 8] = [
+    vec3(-0.5, -0.5, -0.5),
+    vec3(0.5, -0.5, -0.5),
+    vec3(0.5, -0.5, 0.5),
+    vec3(-0.5, -0.5, 0.5),
+    vec3(-0.5, 0.5, -0.5),
+    vec3(0.5, 0.5, -0.5),
+    vec3(0.5, 0.5, 0.5),
+    vec3(-0.5, 0.5, 0.5),
 ];
