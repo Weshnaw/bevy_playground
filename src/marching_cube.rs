@@ -44,7 +44,7 @@ fn setup_marched_cube_example(
     ));
 
     let noise = BasicMulti::<Perlin>::new(1624);
-    for (x, z) in (-1..=1).cartesian_product(-1..=1) {
+    for (x, z) in (1..=1).cartesian_product(1..=1) {
         info!(?x, ?z);
         let chunk = TerrainChunk {
             coords: (x, 0, z),

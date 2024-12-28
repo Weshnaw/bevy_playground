@@ -34,7 +34,7 @@ pub fn setup_camera(
     // spawn a camera to be able to see anything
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(10., 10., 10.).looking_at(Vec3::new(1., 0., 1.), Vec3::Y),
+        Transform::from_xyz(300., 100., 300.).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
         PanOrbitCamera::default(),
         PlayerCamera, // OrderIndependentTransparencySettings::default(),
                       // Msaa::Off
