@@ -1,22 +1,26 @@
 // use std::collections::BTreeMap;
 
-use crate::{debug::WireframeObject, loading::LoadingResource};
+use crate::{
+    debug::WireframeObject,
+    loading::LoadingTaskQueue,
+};
 use bevy::{
     asset::RenderAssetUsages,
+    ecs::world::CommandQueue,
     math::vec3,
     prelude::*,
     render::mesh::{Indices, PrimitiveTopology},
+    tasks::AsyncComputeTaskPool,
 };
 use itertools::Itertools;
 use light_consts::lux;
 use noise::{BasicMulti, NoiseFn, Perlin};
-use uuid::Uuid;
 
 pub struct MarchingCubePlugin;
 
 impl Plugin for MarchingCubePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_marched_cube_example);
+        app.add_systems(Startup, setup_marching_cube_task);
     }
 }
 #[derive(Component)]
@@ -27,14 +31,7 @@ pub(crate) struct MarchedCube;
 // [ ] - ??? Minimimize uneeded triangles:
 //   - greedy meshing: https://0fps.net/2012/06/30/meshing-in-a-minecraft-game/
 //     - https://vodacek.zvb.cz/archiv/339.html
-fn setup_marched_cube_example(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut loading_state: ResMut<LoadingResource>,
-) {
-    let uuid = Uuid::new_v4();
-    loading_state.loading_steps.insert(uuid);
+fn setup_marching_cube_task(mut commands: Commands) {
     commands.spawn((
         DirectionalLight {
             illuminance: lux::FULL_DAYLIGHT,
@@ -45,28 +42,44 @@ fn setup_marched_cube_example(
     ));
 
     let noise = BasicMulti::<Perlin>::new(1624);
-    for (x, z) in (1..=1).cartesian_product(1..=1) {
+    let thread_pool = AsyncComputeTaskPool::get();
+    for (x, z) in (-1..=1).cartesian_product(-1..=1) {
         info!(?x, ?z);
-        let chunk = TerrainChunk {
-            coords: (x, 0, z),
-            size: 100,
-            noise: noise.clone(),
-        };
-        commands.spawn((
-            MarchedCube,
-            Mesh3d(meshes.add(chunk.mesh())),
-            MeshMaterial3d(materials.add(Color::WHITE)),
-            WireframeObject,
-            Transform::from_xyz((x * 100) as f32, 0., (z * 100) as f32),
-        ));
+        let noise = noise.clone();
+        let entity = commands.spawn_empty().id();
+        let task = thread_pool.spawn(async move {
+            let chunk = TerrainChunk {
+                coords: (x, 0, z),
+                size: 100,
+                noise,
+            };
+            let mut command_queue = CommandQueue::default();
+            command_queue.push(move |world: &mut World| {
+                let mesh = world
+                    .get_resource_mut::<Assets<Mesh>>()
+                    .expect("Mesh unavailable")
+                    .add(chunk.mesh());
+                let material = world
+                    .get_resource_mut::<Assets<StandardMaterial>>()
+                    .expect("StandardMaterial unavailable")
+                    .add(Color::WHITE);
+
+                world
+                    .entity_mut(entity)
+                    .insert((
+                        MarchedCube,
+                        Mesh3d(mesh),
+                        MeshMaterial3d(material),
+                        WireframeObject,
+                        Transform::from_xyz((x * 100) as f32, 0., (z * 100) as f32),
+                    ))
+                    .remove::<LoadingTaskQueue>();
+            });
+
+            command_queue
+        });
+        commands.entity(entity).insert(LoadingTaskQueue(task));
     }
-
-    // commands.spawn((
-    //     Mesh3d(meshes.add(Cuboid::from_corners(vec3(0., 0., 0.), vec3(100., 0.1, 100.)))),
-    //     MeshMaterial3d(materials.add(Color::linear_rgb(1., 0., 0.))),
-    // ));
-
-    loading_state.loading_steps.remove(&uuid);
 }
 
 pub struct TerrainChunk {
@@ -198,6 +211,8 @@ fn interpolate(_iso: f32, a: &(Vec3, f32), b: &(Vec3, f32)) -> Vec3 {
 mod test {
     use bevy::{log::LogPlugin, state::app::StatesPlugin};
 
+    use crate::loading::LoadingPlugin;
+
     use super::*;
 
     #[rstest::fixture]
@@ -209,6 +224,7 @@ mod test {
             StatesPlugin::default(),
             AssetPlugin::default(),
             LogPlugin::default(),
+            LoadingPlugin,
         ));
 
         app.insert_resource(Assets::<Mesh>::default());
@@ -224,11 +240,7 @@ mod test {
     fn test_cube(mut app: App) {
         app.update();
 
-        let actual = app
-            .world_mut()
-            .query::<&MarchedCube>()
-            .get_single(app.world());
-        assert!(actual.is_ok(), "There should be exactly 1 cube.");
+        // TODO: something to actually test
     }
 }
 

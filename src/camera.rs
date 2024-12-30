@@ -5,17 +5,17 @@ use bevy::{
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
-use crate::loading::LoadingState;
+use crate::loading::{cleanup_loading_scene, LoadingState};
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PanOrbitCameraPlugin);
-        app.add_systems(OnEnter(LoadingState::LoadingComplete), setup_camera);
+        app.add_systems(OnEnter(LoadingState::LoadingComplete), setup_camera.after(cleanup_loading_scene));
         app.add_systems(
             Update,
-            (control_player /*sync_camera_to_player*/,)
+            (control_player, sync_camera_to_player)
                 .chain()
                 .run_if(in_state(LoadingState::LoadingComplete)),
         );
@@ -30,9 +30,8 @@ struct PlayerCamera;
 
 pub fn setup_camera(
     mut commands: Commands,
-    mut _meshes: ResMut<Assets<Mesh>>,
-    mut _materials: ResMut<Assets<StandardMaterial>>,
-    mut _images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     info!("Setting up camera");
 
@@ -43,21 +42,18 @@ pub fn setup_camera(
             order: 100,
             ..Default::default()
         },
-        Transform::from_xyz(300., 100., 300.).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
+        Transform::from_xyz(300., 100., -300.).looking_at(Vec3::new(0., 10., 0.), Vec3::Y),
         PanOrbitCamera::default(),
         PlayerCamera, // OrderIndependentTransparencySettings::default(),
                       // Msaa::Off
     ));
 
-    // commands.spawn((
-    //     Player,
-    //     Mesh3d(meshes.add(Cuboid::default())),
-    //     Transform::from_xyz(0., 10., 0.),
-    //     MeshMaterial3d(materials.add(StandardMaterial {
-    //         base_color_texture: Some(images.add(uv_debug_texture())),
-    //         ..default()
-    //     })),
-    // ));
+    commands.spawn((
+        Player,
+        Mesh3d(meshes.add(Cuboid::default())),
+        Transform::from_xyz(0., 10., 0.),
+        MeshMaterial3d(materials.add(Color::NONE)),
+    ));
 }
 
 fn control_player(
@@ -85,7 +81,7 @@ fn control_player(
     }
 }
 
-fn _sync_camera_to_player(
+fn sync_camera_to_player(
     players: Query<&Transform, With<Player>>,
     mut camera: Query<&mut PanOrbitCamera, With<PlayerCamera>>,
 ) {

@@ -1,15 +1,16 @@
 use bevy::{
     color::palettes::tailwind::{AMBER_800, GREEN_400},
+    ecs::world::CommandQueue,
     prelude::*,
     render::mesh::VertexAttributeValues,
+    tasks::AsyncComputeTaskPool,
     utils::HashMap,
 };
 use itertools::Itertools;
 use light_consts::lux;
 use noise::{BasicMulti, NoiseFn, Perlin};
-use uuid::Uuid;
 
-use crate::{camera::Player, debug::WireframeObject, loading::LoadingResource};
+use crate::{camera::Player, debug::WireframeObject, loading::LoadingTaskQueue};
 
 pub struct TerrainPlugin;
 
@@ -24,9 +25,7 @@ impl Plugin for TerrainPlugin {
 #[derive(Component)]
 pub(crate) struct Terrain;
 
-fn setup_terrain(mut commands: Commands, mut loading_state: ResMut<LoadingResource>) {
-    let uuid = Uuid::new_v4();
-    loading_state.loading_steps.insert(uuid);
+fn setup_terrain(mut commands: Commands) {
     commands.spawn((
         DirectionalLight {
             illuminance: lux::OVERCAST_DAY,
@@ -37,11 +36,17 @@ fn setup_terrain(mut commands: Commands, mut loading_state: ResMut<LoadingResour
     ));
 
     info!("Generating initial grid");
+    let thread_pool = AsyncComputeTaskPool::get();
     for (x, y) in (-1..=1).cartesian_product(-1..=1) {
         debug!(?x, ?y);
-        commands.queue(SpawnTerrain(IVec2::new(x, y)));
+        let entity = commands.spawn_empty().id();
+        let task = thread_pool.spawn(async move {
+            let mut command_queue = CommandQueue::default();
+            command_queue.push(SpawnTerrain(IVec2::new(x, y), entity));
+            command_queue
+        });
+        commands.entity(entity).insert(LoadingTaskQueue(task));
     }
-    loading_state.loading_steps.remove(&uuid);
 }
 
 fn manage_chunks(
@@ -82,7 +87,9 @@ fn manage_chunks(
         }
 
         for chunk in chunks_to_render {
-            commands.queue(SpawnTerrain(chunk));
+            // For whatever reason I was unable to spawn tasks here; as the handle function would crash with: Task polled after completion
+            let entity = commands.spawn_empty().id();
+            commands.queue(SpawnTerrain(chunk, entity));
         }
     }
 }
@@ -90,7 +97,7 @@ fn manage_chunks(
 #[derive(Resource, Default)]
 struct TerrainStore(HashMap<IVec2, Handle<Mesh>>);
 
-struct SpawnTerrain(IVec2);
+struct SpawnTerrain(IVec2, Entity);
 
 impl Command for SpawnTerrain {
     fn apply(self, world: &mut World) {
@@ -172,19 +179,24 @@ impl Command for SpawnTerrain {
             .0
             .insert(self.0, mesh.clone());
 
-        world.spawn((
-            Mesh3d(mesh),
-            MeshMaterial3d(material),
-            Transform::from_xyz(self.0.x as f32 * size, 0., self.0.y as f32 * size),
-            Terrain,
-            WireframeObject,
-        ));
+        world
+            .entity_mut(self.1)
+            .insert((
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                Transform::from_xyz(self.0.x as f32 * size, 0., self.0.y as f32 * size),
+                Terrain,
+                WireframeObject,
+            ))
+            .remove::<LoadingTaskQueue>();
     }
 }
 
 #[cfg(test)]
 mod test {
     use bevy::state::app::StatesPlugin;
+
+    use crate::loading::LoadingPlugin;
 
     use super::*;
 
@@ -195,6 +207,7 @@ mod test {
             MinimalPlugins,
             StatesPlugin::default(),
             AssetPlugin::default(),
+            LoadingPlugin,
         ));
 
         app.insert_resource(Assets::<Mesh>::default());
