@@ -11,10 +11,7 @@ pub struct LoadingPlugin;
 impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<LoadingState>();
-        app.add_systems(
-            Update,
-            handle_loading_tasks.run_if(in_state(LoadingState::AssetsLoading)),
-        );
+        app.add_systems(Update, handle_loading_tasks);
         app.add_systems(OnEnter(LoadingState::AssetsLoading), loading_scene);
         app.add_systems(
             OnEnter(LoadingState::LoadingComplete),
@@ -34,18 +31,23 @@ pub(crate) enum LoadingState {
 pub(crate) struct LoadingTaskQueue(pub(crate) Task<CommandQueue>);
 fn handle_loading_tasks(
     mut commands: Commands,
+    state: Res<State<LoadingState>>,
     mut next_state: ResMut<NextState<LoadingState>>,
     mut transform_tasks: Query<&mut LoadingTaskQueue>,
 ) {
-    for mut task in &mut transform_tasks {
-        if let Some(mut commands_queue) = block_on(future::poll_once(&mut task.0)) {
-            // append the returned command queue to have it execute later
-            commands.append(&mut commands_queue);
+    if !transform_tasks.is_empty() {
+        info!("New loading tasks!");
+        next_state.set(LoadingState::AssetsLoading);
+        for mut task in &mut transform_tasks {
+            if let Some(mut commands_queue) = block_on(future::poll_once(&mut task.0)) {
+                // append the returned command queue to have it execute later
+                commands.append(&mut commands_queue);
+            }
         }
+    } else if state.get() != &LoadingState::LoadingComplete {
+        info!("Loading Completed");
+        next_state.set(LoadingState::LoadingComplete);
     }
-
-    info!("Loading Completed");
-    next_state.set(LoadingState::LoadingComplete);
 }
 
 #[derive(Component)]
