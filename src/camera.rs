@@ -5,14 +5,17 @@ use bevy::{
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
-use crate::loading::{cleanup_loading_scene, LoadingState};
+use crate::loading::{LoadingState, cleanup_loading_scene};
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PanOrbitCameraPlugin);
-        app.add_systems(OnEnter(LoadingState::LoadingComplete), setup_camera.after(cleanup_loading_scene));
+        app.add_systems(
+            OnEnter(LoadingState::LoadingComplete),
+            setup_camera.after(cleanup_loading_scene),
+        );
         app.add_systems(
             Update,
             (control_player, sync_camera_to_player)
