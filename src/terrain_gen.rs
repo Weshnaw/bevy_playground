@@ -87,7 +87,7 @@ fn manage_chunks(
         }
 
         for chunk in chunks_to_render {
-            // For whatever reason I was unable to spawn tasks here; as the handle function would crash with: Task polled after completion
+            // TODO: CONSIDER: For whatever reason I was unable to spawn tasks here; as the handle function would crash with: Task polled after completion
             // Might need to do some sort of state machine i.e. create_tasks -> set_state(LoadingChunks) -> handle_tasks.run_if(in_state(LoadingChunks)) -> set_state(LoadingComplete)
             let entity = commands.spawn_empty().id();
             commands.queue(SpawnTerrain(chunk, entity));

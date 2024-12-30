@@ -71,7 +71,9 @@ pub(crate) fn loading_scene(mut commands: Commands) {
         LoadingScene,
     ));
 
-    // Not entirely sure why but this screen doesn't show up
+    // TODO: FIX: Not entirely sure why but this screen doesn't show up during startup
+    // I'm assuming it's due to the cube mesh tasks taking up all the resources
+    // so maybe it will go away once GPU compute is online
 }
 
 pub(crate) fn cleanup_loading_scene(
