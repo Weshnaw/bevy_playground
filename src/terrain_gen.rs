@@ -7,15 +7,16 @@ use bevy::{
 use itertools::Itertools;
 use light_consts::lux;
 use noise::{BasicMulti, NoiseFn, Perlin};
+use uuid::Uuid;
 
-use crate::{camera::Player, debug::WireframeObject, ApplicationStates};
+use crate::{camera::Player, debug::WireframeObject, loading::LoadingResource};
 
 pub struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(TerrainStore::default());
-        app.add_systems(OnEnter(ApplicationStates::LoadingComplete), setup_terrain);
+        app.add_systems(Startup, setup_terrain);
         app.add_systems(Update, manage_chunks);
     }
 }
@@ -23,7 +24,9 @@ impl Plugin for TerrainPlugin {
 #[derive(Component)]
 pub(crate) struct Terrain;
 
-fn setup_terrain(mut commands: Commands) {
+fn setup_terrain(mut commands: Commands, mut loading_state: ResMut<LoadingResource>) {
+    let uuid = Uuid::new_v4();
+    loading_state.loading_steps.insert(uuid);
     commands.spawn((
         DirectionalLight {
             illuminance: lux::OVERCAST_DAY,
@@ -38,6 +41,7 @@ fn setup_terrain(mut commands: Commands) {
         debug!(?x, ?y);
         commands.queue(SpawnTerrain(IVec2::new(x, y)));
     }
+    loading_state.loading_steps.remove(&uuid);
 }
 
 fn manage_chunks(
@@ -173,7 +177,7 @@ impl Command for SpawnTerrain {
             MeshMaterial3d(material),
             Transform::from_xyz(self.0.x as f32 * size, 0., self.0.y as f32 * size),
             Terrain,
-            WireframeObject
+            WireframeObject,
         ));
     }
 }
@@ -186,7 +190,7 @@ mod test {
 
     fn minimal_app() -> App {
         let mut app = App::new();
-        
+
         app.add_plugins((
             MinimalPlugins,
             StatesPlugin::default(),
@@ -211,8 +215,6 @@ mod test {
             0
         );
 
-        // enter loading complete
-        app.insert_state(ApplicationStates::LoadingComplete);
         app.update();
 
         assert!(app.world().get_resource::<TerrainStore>().is_some());

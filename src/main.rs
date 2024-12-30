@@ -1,6 +1,6 @@
 use bevy::{prelude::*, render::{settings::{RenderCreation, WgpuFeatures, WgpuSettings}, RenderPlugin}};
 use bevy_playground::{
-    assets::AssetsPlugin, camera::CameraPlugin, debug::DebugPlugin, marching_cube::MarchingCubePlugin
+    camera::CameraPlugin, debug::DebugPlugin, loading::LoadingPlugin, marching_cube::MarchingCubePlugin
 };
 
 fn main() {
@@ -13,7 +13,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(DebugPlugin)
-        .add_plugins(AssetsPlugin)
+        .add_plugins(LoadingPlugin)
         .add_plugins(CameraPlugin)
         // .add_plugins(TerrainPlugin)
         .add_plugins(MarchingCubePlugin)

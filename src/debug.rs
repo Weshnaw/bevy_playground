@@ -15,49 +15,54 @@ pub struct DebugPlugin;
 
 impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
-        // Keyboard toggle checks
-        app.add_systems(Update, toggle_debug);
-        app.add_systems(Update, toggle_wireframe);
-
-        // Allow wireframe view
         app.add_plugins(WireframePlugin);
         app.add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin);
         app.add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin);
         app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
-
-        // egui
-        app.init_resource::<EGUIState>();
         app.add_plugins(EguiPlugin);
-        app.add_systems(Update, egui_debug.after(toggle_debug));
+
+        app.init_state::<DebugState>();
+        app.init_state::<WireframeState>();
+        app.init_resource::<DebugResource>();
+
+        app.add_systems(Update, toggle_debug);
+        app.add_systems(Update, toggle_wireframe);
+        app.add_systems(Update, egui_debug.run_if(in_state(DebugState::Open)));
     }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
+enum DebugState {
+    Open,
+    #[default]
+    Closed,
 }
 
 #[derive(Default, Resource)]
-struct EGUIState {
-    open: bool,
+pub struct DebugResource {
+    _value: f64,
 }
+
 fn egui_debug(
     mut contexts: EguiContexts,
-    ui_state: Res<EGUIState>,
+    mut _debug_state: ResMut<DebugResource>,
     diagnostics: Res<DiagnosticsStore>,
 ) {
-    if ui_state.open {
-        let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS);
-        let frame_count = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_COUNT);
-        let frame_time = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME);
-        let cpu = diagnostics.get(&SystemInformationDiagnosticsPlugin::CPU_USAGE);
-        let mem = diagnostics.get(&SystemInformationDiagnosticsPlugin::MEM_USAGE);
-        egui::Window::new("DEBUG").show(contexts.ctx_mut(), move |ui| {
-            create_label("FPS: ", ui, fps, 2, Diagnostic::smoothed);
-            create_label("MIN FPS: ", ui, fps, 2, |fps| {
-                fps.values().cloned().reduce(|a, b| a.min(b))
-            });
-            create_label("Frame Count: ", ui, frame_count, 0, Diagnostic::smoothed);
-            create_label("Avg. Frame Time: ", ui, frame_time, 2, Diagnostic::average);
-            create_label("CPU Usage: ", ui, cpu, 2, Diagnostic::smoothed);
-            create_label("Mem Usage: ", ui, mem, 2, Diagnostic::smoothed);
+    let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS);
+    let frame_count = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_COUNT);
+    let frame_time = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME);
+    let cpu = diagnostics.get(&SystemInformationDiagnosticsPlugin::CPU_USAGE);
+    let mem = diagnostics.get(&SystemInformationDiagnosticsPlugin::MEM_USAGE);
+    egui::Window::new("DEBUG").show(contexts.ctx_mut(), move |ui| {
+        create_label("FPS: ", ui, fps, 2, Diagnostic::smoothed);
+        create_label("MIN FPS: ", ui, fps, 2, |fps| {
+            fps.values().cloned().reduce(|a, b| a.min(b))
         });
-    }
+        create_label("Frame Count: ", ui, frame_count, 0, Diagnostic::smoothed);
+        create_label("Avg. Frame Time: ", ui, frame_time, 2, Diagnostic::average);
+        create_label("CPU Usage: ", ui, cpu, 2, Diagnostic::smoothed);
+        create_label("Mem Usage: ", ui, mem, 2, Diagnostic::smoothed);
+    });
 }
 
 fn create_label(
@@ -82,29 +87,51 @@ fn create_label(
 fn toggle_debug(
     // mut commands: Commands,
     kbd: Res<ButtonInput<KeyCode>>,
-    mut ui_state: ResMut<EGUIState>,
+    state: Res<State<DebugState>>,
+    mut next_state: ResMut<NextState<DebugState>>,
 ) {
     if kbd.just_pressed(KeyCode::F12) {
         info!("Toggling DEBUG");
-        ui_state.open = !ui_state.open;
+        match state.get() {
+            DebugState::Open => next_state.set(DebugState::Closed),
+            DebugState::Closed => next_state.set(DebugState::Open),
+        }
     }
 }
 
 #[derive(Component)]
 pub(crate) struct WireframeObject;
 
+#[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
+enum WireframeState {
+    On,
+    #[default]
+    Off,
+}
+
 fn toggle_wireframe(
     mut commands: Commands,
-    obj_wireframes: Query<Entity, (With<WireframeObject>, With<Wireframe>)>,
-    objs: Query<Entity, (With<WireframeObject>, Without<Wireframe>)>,
+    objs: Query<Entity, With<WireframeObject>>,
     kbd: Res<ButtonInput<KeyCode>>,
+    state: Res<State<WireframeState>>,
+    mut next_state: ResMut<NextState<WireframeState>>,
 ) {
     if kbd.just_pressed(KeyCode::F11) {
-        for obj in &objs {
-            commands.entity(obj).insert(Wireframe);
-        }
-        for obj in &obj_wireframes {
-            commands.entity(obj).remove::<Wireframe>();
+        match state.get() {
+            WireframeState::On => {
+                // Should move obj logic to be seperate from the kbd / state change logic
+                // so that we can do things like also allow for a egui button for wireframes
+                for obj in &objs {
+                    commands.entity(obj).remove::<Wireframe>();
+                }
+                next_state.set(WireframeState::Off)
+            }
+            WireframeState::Off => {
+                for obj in &objs {
+                    commands.entity(obj).insert(Wireframe);
+                }
+                next_state.set(WireframeState::On)
+            }
         }
     }
 }

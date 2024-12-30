@@ -5,15 +5,20 @@ use bevy::{
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
-use crate::ApplicationStates;
+use crate::loading::LoadingState;
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PanOrbitCameraPlugin);
-        app.add_systems(OnEnter(ApplicationStates::LoadingComplete), setup_camera);
-        app.add_systems(Update, (control_player, /*sync_camera_to_player*/).chain());
+        app.add_systems(OnEnter(LoadingState::LoadingComplete), setup_camera);
+        app.add_systems(
+            Update,
+            (control_player /*sync_camera_to_player*/,)
+                .chain()
+                .run_if(in_state(LoadingState::LoadingComplete)),
+        );
     }
 }
 
@@ -34,6 +39,10 @@ pub fn setup_camera(
     // spawn a camera to be able to see anything
     commands.spawn((
         Camera3d::default(),
+        Camera {
+            order: 100,
+            ..Default::default()
+        },
         Transform::from_xyz(300., 100., 300.).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
         PanOrbitCamera::default(),
         PlayerCamera, // OrderIndependentTransparencySettings::default(),
@@ -77,10 +86,7 @@ fn control_player(
 }
 
 fn _sync_camera_to_player(
-    players: Query<
-        &Transform,
-        With<Player>,
-    >,
+    players: Query<&Transform, With<Player>>,
     mut camera: Query<&mut PanOrbitCamera, With<PlayerCamera>>,
 ) {
     let Ok(player) = players.get_single() else {

@@ -1,6 +1,6 @@
 // use std::collections::BTreeMap;
 
-use crate::{ApplicationStates, debug::WireframeObject};
+use crate::{debug::WireframeObject, loading::LoadingResource};
 use bevy::{
     asset::RenderAssetUsages,
     math::vec3,
@@ -10,15 +10,13 @@ use bevy::{
 use itertools::Itertools;
 use light_consts::lux;
 use noise::{BasicMulti, NoiseFn, Perlin};
+use uuid::Uuid;
 
 pub struct MarchingCubePlugin;
 
 impl Plugin for MarchingCubePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            OnEnter(ApplicationStates::LoadingComplete),
-            setup_marched_cube_example,
-        );
+        app.add_systems(Startup, setup_marched_cube_example);
     }
 }
 #[derive(Component)]
@@ -33,7 +31,10 @@ fn setup_marched_cube_example(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut loading_state: ResMut<LoadingResource>,
 ) {
+    let uuid = Uuid::new_v4();
+    loading_state.loading_steps.insert(uuid);
     commands.spawn((
         DirectionalLight {
             illuminance: lux::FULL_DAYLIGHT,
@@ -64,6 +65,8 @@ fn setup_marched_cube_example(
     //     Mesh3d(meshes.add(Cuboid::from_corners(vec3(0., 0., 0.), vec3(100., 0.1, 100.)))),
     //     MeshMaterial3d(materials.add(Color::linear_rgb(1., 0., 0.))),
     // ));
+
+    loading_state.loading_steps.remove(&uuid);
 }
 
 pub struct TerrainChunk {
@@ -108,7 +111,7 @@ impl TerrainChunk {
                             let point = translation + point;
                             (point, self.value_from_noise(point + offset))
                         });
-                        
+
                         calculate_single_cube_polygons(&cell_points, iso_level)
                     })
                 })
@@ -219,9 +222,6 @@ mod test {
     #[rstest::rstest]
     #[test]
     fn test_cube(mut app: App) {
-        app.update();
-        // enter loading complete
-        app.insert_state(ApplicationStates::LoadingComplete);
         app.update();
 
         let actual = app
