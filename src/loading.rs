@@ -51,9 +51,9 @@ fn handle_loading_tasks(
 }
 
 #[derive(Component)]
-pub(crate) struct LoadingScene;
+struct LoadingScene;
 
-pub(crate) fn loading_scene(mut commands: Commands) {
+fn loading_scene(mut commands: Commands) {
     info!("Setting up loading camera");
     commands.spawn((
         Camera2d,
@@ -78,7 +78,7 @@ pub(crate) fn loading_scene(mut commands: Commands) {
     // so maybe it will go away once GPU compute is online
 }
 
-pub(crate) fn cleanup_loading_scene(
+fn cleanup_loading_scene(
     mut commands: Commands,
     loading_entities: Query<Entity, With<LoadingScene>>,
 ) {
