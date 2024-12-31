@@ -5,10 +5,7 @@ use bevy::{
         settings::{RenderCreation, WgpuFeatures, WgpuSettings},
     },
 };
-use bevy_playground::{
-    camera::CameraPlugin, debug::DebugPlugin, loading::LoadingPlugin,
-    marching_cube::MarchingCubePlugin,
-};
+use bevy_playground::*;
 
 fn main() {
     App::new()
@@ -19,10 +16,11 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugins(DebugPlugin)
-        .add_plugins(LoadingPlugin)
-        .add_plugins(CameraPlugin)
+        .add_plugins(debug::DebugPlugin)
+        .add_plugins(loading::LoadingPlugin)
+        .add_plugins(camera::CameraPlugin)
         // .add_plugins(TerrainPlugin)
-        .add_plugins(MarchingCubePlugin)
+        // .add_plugins(marching_cube::MarchingCubePlugin)
+        .add_plugins(compute::ComputePlugin)
         .run();
 }
