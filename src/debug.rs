@@ -5,11 +5,15 @@ use bevy::{
     },
     pbr::wireframe::{Wireframe, WireframePlugin},
     prelude::*,
+    render::{Render, RenderApp, RenderSet},
 };
 use bevy_egui::{
     EguiContexts, EguiPlugin,
     egui::{self, Ui},
 };
+use crossbeam_channel::{Receiver, Sender};
+
+use crate::compute::CHUNK_SIZE;
 
 pub struct DebugPlugin;
 
@@ -26,8 +30,39 @@ impl Plugin for DebugPlugin {
         app.init_resource::<DebugResource>();
 
         app.add_systems(Update, toggle_debug);
+        app.add_systems(Update, send_to_render);
         app.add_systems(Update, toggle_wireframe);
         app.add_systems(Update, egui_debug.run_if(in_state(DebugState::Open)));
+    }
+    fn finish(&self, app: &mut App) {
+        let (s, r) = crossbeam_channel::unbounded();
+        app.insert_resource(MainWorldSender(s));
+
+        let render_app = app.sub_app_mut(RenderApp);
+        render_app.init_resource::<DebugResource>();
+        render_app.add_systems(Render, receive_to_render.before(RenderSet::Render));
+        render_app.insert_resource(RenderWorldReceiver(r));
+    }
+}
+
+#[derive(Resource, Deref)]
+struct MainWorldSender(Sender<DebugResource>);
+
+#[derive(Resource, Deref)]
+struct RenderWorldReceiver(Receiver<DebugResource>);
+
+fn send_to_render(sender: Res<MainWorldSender>, debug: Res<DebugResource>) {
+    if debug.is_changed() {
+        sender
+            .send(debug.clone())
+            .expect("failed to send debug data");
+    }
+}
+
+fn receive_to_render(receiver: Res<RenderWorldReceiver>, mut debug: ResMut<DebugResource>) {
+    if let Ok(data) = receiver.try_recv() {
+        // info!("Received data from main world: {data:?}");
+        debug.update(data);
     }
 }
 
@@ -38,14 +73,20 @@ enum DebugState {
     Closed,
 }
 
-#[derive(Default, Resource)]
+#[derive(Default, Resource, Debug, Clone)]
 pub struct DebugResource {
-    _value: f64,
+    pub value: u32,
+}
+
+impl DebugResource {
+    fn update(&mut self, other: Self) {
+        self.value = other.value
+    }
 }
 
 fn egui_debug(
     mut contexts: EguiContexts,
-    mut _debug_state: ResMut<DebugResource>,
+    mut debug: ResMut<DebugResource>,
     diagnostics: Res<DiagnosticsStore>,
 ) {
     let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS);
@@ -62,6 +103,8 @@ fn egui_debug(
         create_label("Avg. Frame Time: ", ui, frame_time, 2, Diagnostic::average);
         create_label("CPU Usage: ", ui, cpu, 2, Diagnostic::smoothed);
         create_label("Mem Usage: ", ui, mem, 2, Diagnostic::smoothed);
+
+        ui.add(egui::Slider::new(&mut debug.value, 0..=CHUNK_SIZE - 1).text("layer"));
     });
 }
 
