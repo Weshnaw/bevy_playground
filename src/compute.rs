@@ -360,16 +360,23 @@ fn prepare_3d_texture(mut commands: Commands, mut images: ResMut<Assets<Image>>)
         TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
     let slice = images.add(image_slice);
 
-    commands.spawn((Camera2d::default(), Camera {
-        order: 0,
-        ..Default::default()
-    }));
-
-    // info!(?slice.);
-    commands.spawn((
-        Sprite::from_image(slice.clone()),
-        DebugVoxelSprite,
-    ));
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.),
+                height: Val::Percent(100.),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            DebugVoxelImage,
+        ))
+        .with_children(|parent| {
+            parent.spawn((ImageNode::new(slice.clone()), Node {
+                width: Val::Px(500.),
+                ..default()
+            }));
+        });
 
     commands.insert_resource(Voxels {
         image: voxels,
@@ -377,9 +384,9 @@ fn prepare_3d_texture(mut commands: Commands, mut images: ResMut<Assets<Image>>)
     });
 }
 
-pub const CHUNK_SIZE: u32 = 512;
+pub const CHUNK_SIZE: u32 = 32;
 #[derive(Component)]
-struct DebugVoxelSprite;
+struct DebugVoxelImage;
 
 struct SphereComputePlugin;
 
@@ -389,24 +396,26 @@ struct SphereComputeLabel;
 impl Plugin for SphereComputePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractResourcePlugin::<Voxels>::default());
-
-        let render_app = app.sub_app_mut(RenderApp);
-
-        render_app.add_systems(
-            Render,
-            prepare_bind_group_sphere.in_set(RenderSet::PrepareBindGroups),
-        );
-
-        let mut render_graph = render_app.world_mut().resource_mut::<RenderGraph>();
-
-        render_graph.add_node(SphereComputeLabel, SphereComputeNode::default());
-        render_graph.add_node_edge(SphereComputeLabel, bevy::render::graph::CameraDriverLabel);
     }
 
     fn finish(&self, app: &mut App) {
         let render_app = app.sub_app_mut(RenderApp);
         render_app.init_resource::<SpherePipeline>();
         render_app.init_resource::<LayerBuffer>();
+        render_app.init_resource::<AtomicBuffer>();
+
+        render_app.add_systems(
+            Render,
+            (
+                prepare_bind_group_sphere.in_set(RenderSet::PrepareBindGroups),
+                read_atomic_buffer.after(RenderSet::Render),
+            ),
+        );
+
+        let mut render_graph = render_app.world_mut().resource_mut::<RenderGraph>();
+
+        render_graph.add_node(SphereComputeLabel, SphereComputeNode::default());
+        render_graph.add_node_edge(SphereComputeLabel, bevy::render::graph::CameraDriverLabel);
     }
 }
 
@@ -428,6 +437,7 @@ fn prepare_bind_group_sphere(
     render_queue: Res<RenderQueue>,
     debug_res: Res<DebugResource>,
     mut layer_buffer: ResMut<LayerBuffer>,
+    atomic_buffer: Res<AtomicBuffer>,
 ) {
     let voxels = gpu_images.get(&game_of_life_images.image).unwrap();
     let debug_slice = gpu_images.get(&game_of_life_images.debug_slice).unwrap();
@@ -443,6 +453,10 @@ fn prepare_bind_group_sphere(
             uniform_buffer
                 .binding()
                 .expect("Uniform buffer failed to bind"),
+            atomic_buffer
+                .0
+                .binding()
+                .expect("Atomic buffer failed to bind"),
         )),
     );
     commands.insert_resource(SphereBindGroups(bind_group));
@@ -467,6 +481,7 @@ impl FromWorld for SpherePipeline {
                     texture_storage_3d(TextureFormat::R32Float, StorageTextureAccess::ReadWrite),
                     texture_storage_2d(TextureFormat::R32Float, StorageTextureAccess::WriteOnly),
                     uniform_buffer::<u32>(false),
+                    storage_buffer::<u32>(false),
                 ),
             ),
         );
@@ -557,9 +572,7 @@ impl render_graph::Node for SphereComputeNode {
         match self.state {
             SphereComputeState::Loading => {}
             SphereComputeState::Init => {
-                let init_pipeline = pipeline_cache
-                    .get_compute_pipeline(pipeline.init)
-                    .unwrap();
+                let init_pipeline = pipeline_cache.get_compute_pipeline(pipeline.init).unwrap();
                 pass.set_bind_group(0, bind_groups, &[]);
                 pass.set_pipeline(init_pipeline);
                 pass.dispatch_workgroups(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
@@ -571,6 +584,8 @@ impl render_graph::Node for SphereComputeNode {
                 pass.set_bind_group(0, bind_groups, &[]);
                 pass.set_pipeline(update_pipeline);
                 pass.dispatch_workgroups(CHUNK_SIZE, CHUNK_SIZE, 1);
+                let buffers = world.resource::<AtomicBuffer>();
+                buffers.copy_buffer(render_context);
             }
         }
 
@@ -593,3 +608,79 @@ pub fn texture_storage_3d(
 
 #[derive(Resource, Default)]
 struct LayerBuffer(UniformBuffer<u32>);
+
+#[derive(Resource)]
+struct AtomicBuffer(StorageBuffer<u32>, Buffer);
+
+impl FromWorld for AtomicBuffer {
+    fn from_world(world: &mut World) -> Self {
+        let device = world.resource::<RenderDevice>();
+        let queue = world.resource::<RenderQueue>();
+
+        let mut gpu = StorageBuffer::default();
+
+        gpu.write_buffer(device, queue);
+
+        let cpu = device.create_buffer(&BufferDescriptor {
+            label: Some("atomic readback_buffer"),
+            size: (BUFFER_LEN * size_of::<u32>()) as u64, // buffers with different data types???
+            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        Self(gpu, cpu)
+    }
+}
+
+impl AtomicBuffer {
+    fn read(&self, device: &RenderDevice) -> u32 {
+        let buffer_slice = self.1.slice(..);
+        let (s, r) = crossbeam_channel::unbounded::<()>();
+        buffer_slice.map_async(MapMode::Read, move |r| match r {
+            // This will execute once the gpu is ready, so after the call to poll()
+            Ok(_) => s.send(()).expect("Failed to send map update"),
+            Err(err) => panic!("Failed to map buffer {err}"),
+        });
+
+        device.poll(Maintain::wait()).panic_on_timeout();
+        r.recv().expect("Failed to receive the map_async message");
+
+        let data = {
+            let buffer_view = buffer_slice.get_mapped_range();
+            let data = u32::read_from_bytes(&buffer_view[..size_of::<u32>()])
+                .expect("Failed to read bytes");
+            data
+        };
+
+        self.1.unmap();
+
+        data
+    }
+
+    fn _reset(&mut self, device: &RenderDevice, queue: &RenderQueue) {
+        self.0.set(0);
+        self.0.write_buffer(device, queue);
+    }
+
+    fn copy_buffer(&self, context: &mut RenderContext) {
+        context.command_encoder().copy_buffer_to_buffer(
+            self.0
+                .buffer()
+                .expect("Buffer should have already been uploaded to the gpu"),
+            0,
+            &self.1,
+            0,
+            (size_of::<u32>()) as u64,
+        );
+    }
+}
+
+fn read_atomic_buffer(
+    render_device: Res<RenderDevice>,
+    render_queue: Res<RenderQueue>,
+    mut buffers: ResMut<AtomicBuffer>,
+) {
+    buffers._reset(&render_device, &render_queue);
+    let num = buffers.read(&render_device);
+    info!(?num);
+}

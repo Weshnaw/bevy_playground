@@ -2,10 +2,10 @@
 var voxels: texture_storage_3d<r32float, read>;
 
 @group(0) @binding(1)
-var<storage, read_write> index_head: atomic<u32>; // Can I avoid having this be a binding?
+var<storage, read_write> index_head: atomic<u32>;
 
 @group(0) @binding(2)
-var<storage, read_write> vertex_head: atomic<u32>; // Can I avoid having this be a binding? 
+var<storage, read_write> vertex_head: atomic<u32>; 
 
 @group(0) @binding(3)
 var<storage, read_write> vertices: array<vec3<f32>>;

@@ -13,8 +13,8 @@ use bevy_egui::{
 };
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::compute::CHUNK_SIZE;
-
+// use crate::compute::CHUNK_SIZE;
+const CHUNK_SIZE: u32 = 32;
 pub struct DebugPlugin;
 
 impl Plugin for DebugPlugin {
