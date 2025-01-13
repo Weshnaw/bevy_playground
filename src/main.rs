@@ -44,7 +44,7 @@ fn main() {
 // We need a plugin to organize all the systems and render node required for this example
 struct GpuReadbackPlugin;
 impl Plugin for GpuReadbackPlugin {
-    fn build(&self, app: &mut App) {}
+    fn build(&self, _app: &mut App) {}
 
     fn finish(&self, app: &mut App) {
         let render_app = app.sub_app_mut(RenderApp);
