@@ -24,7 +24,7 @@ use binding_types::uniform_buffer;
 const SHADER_ASSET_PATH: &str = "shaders/gpu_readback.wgsl";
 
 // The length of the buffer sent to the gpu
-const BUFFER_LEN: usize = 16;
+const BUFFER_LEN: usize = 2;
 
 fn main() {
     App::new()
@@ -51,8 +51,7 @@ impl Plugin for GpuReadbackPlugin {
         render_app.init_resource::<ComputePipeline>().add_systems(
             Render,
             prepare_bind_group
-                .in_set(RenderSet::PrepareBindGroups)
-                // We don't need to recreate the bind group every frame
+                .in_set(RenderSet::PrepareBindGroups) // We don't need to recreate the bind group every frame
                 .run_if(not(resource_exists::<GpuBufferBindGroup>)),
         );
 
@@ -65,7 +64,7 @@ impl Plugin for GpuReadbackPlugin {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Debug)]
 struct Counter(u32);
 
 fn update_uniform(
@@ -75,6 +74,7 @@ fn update_uniform(
 ) {
     counter.0 += 1;
 
+    info!(?counter);
     let uniform = buffers.get_mut(uniform.0.id()).unwrap();
     uniform.set_data(counter.0);
 }
