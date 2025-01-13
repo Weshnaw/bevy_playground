@@ -50,9 +50,8 @@ impl Plugin for GpuReadbackPlugin {
         let render_app = app.sub_app_mut(RenderApp);
         render_app.init_resource::<ComputePipeline>().add_systems(
             Render,
-            prepare_bind_group
-                .in_set(RenderSet::PrepareBindGroups) // We don't need to recreate the bind group every frame
-                .run_if(not(resource_exists::<GpuBufferBindGroup>)),
+            prepare_bind_group.in_set(RenderSet::PrepareBindGroups), // We don't need to recreate the bind group every frame
+                                                                     // .run_if(not(resource_exists::<GpuBufferBindGroup>)),
         );
 
         // Add the compute node as a top level node to the render graph
