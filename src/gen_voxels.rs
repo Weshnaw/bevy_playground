@@ -168,14 +168,14 @@ fn prepare_bind_groups(
 
 fn update_bind_groups(
     mut bind_group: ResMut<GpuBufferBindGroup>,
-    debug: Res<DebugResource>,
     render_device: Res<RenderDevice>,
     pipeline: Res<ComputePipeline>,
     buffer: Res<Buffers>,
     buffers: Res<RenderAssets<GpuShaderStorageBuffer>>,
     images: Res<RenderAssets<GpuImage>>,
 ) {
-    if debug.is_changed() {
+    if buffers.is_changed() | images.is_changed() {
+        info!("changed");
         let voxels = images.get(&buffer.voxels).unwrap();
         let slice = images.get(&buffer.slice).unwrap();
         let layer = buffers.get(&buffer.layer).unwrap();

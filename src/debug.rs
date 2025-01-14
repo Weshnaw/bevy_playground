@@ -75,7 +75,12 @@ fn egui_debug(
         create_label("CPU Usage: ", ui, cpu, 2, Diagnostic::smoothed);
         create_label("Mem Usage: ", ui, mem, 2, Diagnostic::smoothed);
 
-        ui.add(egui::Slider::new(&mut debug.value, 0..=CHUNK_SIZE - 1).text("layer"));
+        let mut value: u32 = debug.value;
+        ui.add(egui::Slider::new(&mut value, 0..=CHUNK_SIZE - 1).text("layer"));
+
+        if value != debug.value {
+            debug.value = value;
+        }
     });
 }
 
