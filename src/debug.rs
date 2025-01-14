@@ -5,64 +5,41 @@ use bevy::{
     },
     pbr::wireframe::{Wireframe, WireframePlugin},
     prelude::*,
-    render::{Render, RenderApp, RenderSet},
+    render::extract_resource::{ExtractResource, ExtractResourcePlugin},
 };
 use bevy_egui::{
     EguiContexts, EguiPlugin,
     egui::{self, Ui},
 };
-use crossbeam_channel::{Receiver, Sender};
+
+use crate::gen_voxels::CHUNK_SIZE;
 
 // use crate::compute::CHUNK_SIZE;
-const CHUNK_SIZE: u32 = 32;
 pub struct DebugPlugin;
 
 impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(WireframePlugin);
-        app.add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin);
-        app.add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin);
-        app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
-        app.add_plugins(EguiPlugin);
+        app.add_plugins((
+            WireframePlugin,
+            bevy::diagnostic::FrameTimeDiagnosticsPlugin,
+            bevy::diagnostic::EntityCountDiagnosticsPlugin,
+            bevy::diagnostic::SystemInformationDiagnosticsPlugin,
+            EguiPlugin,
+            ExtractResourcePlugin::<DebugResource>::default(),
+        ));
 
         app.init_state::<DebugState>();
         app.init_state::<WireframeState>();
         app.init_resource::<DebugResource>();
 
-        app.add_systems(Update, toggle_debug);
-        app.add_systems(Update, send_to_render);
-        app.add_systems(Update, toggle_wireframe);
-        app.add_systems(Update, egui_debug.run_if(in_state(DebugState::Open)));
-    }
-    fn finish(&self, app: &mut App) {
-        let (s, r) = crossbeam_channel::unbounded();
-        app.insert_resource(MainWorldSender(s));
-
-        let render_app = app.sub_app_mut(RenderApp);
-        render_app.init_resource::<DebugResource>();
-        render_app.add_systems(Render, receive_to_render.before(RenderSet::Render));
-        render_app.insert_resource(RenderWorldReceiver(r));
-    }
-}
-
-#[derive(Resource, Deref)]
-struct MainWorldSender(Sender<DebugResource>);
-
-#[derive(Resource, Deref)]
-struct RenderWorldReceiver(Receiver<DebugResource>);
-
-fn send_to_render(sender: Res<MainWorldSender>, debug: Res<DebugResource>) {
-    if debug.is_changed() {
-        sender
-            .send(debug.clone())
-            .expect("failed to send debug data");
-    }
-}
-
-fn receive_to_render(receiver: Res<RenderWorldReceiver>, mut debug: ResMut<DebugResource>) {
-    if let Ok(data) = receiver.try_recv() {
-        // info!("Received data from main world: {data:?}");
-        debug.update(data);
+        app.add_systems(
+            Update,
+            (
+                toggle_debug,
+                toggle_wireframe,
+                egui_debug.run_if(in_state(DebugState::Open)),
+            ),
+        );
     }
 }
 
@@ -73,15 +50,9 @@ enum DebugState {
     Closed,
 }
 
-#[derive(Default, Resource, Debug, Clone)]
+#[derive(Default, Resource, Debug, Clone, ExtractResource)]
 pub struct DebugResource {
     pub value: u32,
-}
-
-impl DebugResource {
-    fn update(&mut self, other: Self) {
-        self.value = other.value
-    }
 }
 
 fn egui_debug(
