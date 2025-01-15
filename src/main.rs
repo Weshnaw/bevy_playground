@@ -24,6 +24,6 @@ fn main() {
         .add_plugins(loading::LoadingPlugin)
         .add_plugins(camera::CameraPlugin)
         // .add_plugins(marching_cube::MarchingCubePlugin)
-        .add_plugins(gen_voxels::GenerateVoxelsPlugin)
+        .add_plugins(shader::render::ShaderRenderPlugin)
         .run();
 }

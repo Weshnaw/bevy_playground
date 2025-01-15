@@ -1,22 +1,21 @@
 @group(0) @binding(0)
 var voxels: texture_storage_3d<r32float, read>;
 
+
+struct VertexData {
+    index_head: atomic<u32>,
+    vertex_head: atomic<u32>,
+}
+
 @group(0) @binding(1)
-var<storage, read_write> index_head: atomic<u32>;
-
+var<storage, read_write> data: VertexData;
 @group(0) @binding(2)
-var<storage, read_write> vertex_head: atomic<u32>; 
-
-@group(0) @binding(3)
 var<storage, read_write> vertices: array<vec3<f32>>;
-
-@group(0) @binding(4)
+@group(0) @binding(3)
 var<storage, read_write> indices: array<u32>;
-
-@group(0) @binding(5)
+@group(0) @binding(4)
 var<storage, read_write> normals: array<vec3<f32>>;
-
-@group(0) @binding(6)
+@group(0) @binding(5)
 var<storage, read_write> uvs: array<vec2<f32>>;
 
 fn clamp(pos: vec3<u32>, max: vec3<u32>) -> f32 {
@@ -57,7 +56,7 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         clamp(invocation_id + OFFSET_LOOKUP[6u], dim),
         clamp(invocation_id + OFFSET_LOOKUP[7u], dim),
     );
-    
+
     var cube_idx: u32 = 0u;
     cube_idx = cube_idx | u32(densities[0u] < 0.5) * (1u << 0u);
     cube_idx = cube_idx | u32(densities[1u] < 0.5) * (1u << 1u);
@@ -74,7 +73,7 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
 
     var edges = EDGE_LOOKUP; // There has to be a better way then this, this could just be due to cargo-wgsl having older naga version
 
-    var vertices = array(
+    var verts = array(
         f32((edges[cube_idx] & (1u <<  0u)) != 0u) * interp_vertex(positions[0u], positions[1u], densities[0u], densities[1u]),
         f32((edges[cube_idx] & (1u <<  1u)) != 0u) * interp_vertex(positions[1u], positions[2u], densities[1u], densities[2u]),
         f32((edges[cube_idx] & (1u <<  2u)) != 0u) * interp_vertex(positions[2u], positions[3u], densities[2u], densities[3u]),
@@ -90,16 +89,16 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     );
 
     var tri_idx: u32 = 0u;
+    var tri = TRIANGLE_LOOKUP; // There has to be a better way then this, this could just be due to cargo-wgsl having older naga version
     loop {
         // Technically vertex_head and index_head are always equal; but I may want to
         // cull duplicated verts at some point
-        var start_vert_idx = atomicAdd(&vertex_head, 3u);
-        var start_indices_idx = atomicAdd(&index_head, 3u);
+        var start_vert_idx = atomicAdd(&data.vertex_head, 3u);
+        var start_indices_idx = atomicAdd(&data.index_head, 3u);
 
-        var tri = TRIANGLE_LOOKUP; // There has to be a better way then this, this could just be due to cargo-wgsl having older naga version
-        let v0 = vertices[ tri[cube_idx][tri_idx + 0u] ];
-        let v1 = vertices[ tri[cube_idx][tri_idx + 1u] ];
-        let v2 = vertices[ tri[cube_idx][tri_idx + 2u] ];
+        let v0 = verts[ tri[cube_idx][tri_idx + 0u] ];
+        let v1 = verts[ tri[cube_idx][tri_idx + 1u] ];
+        let v2 = verts[ tri[cube_idx][tri_idx + 2u] ];
 
         vertices[start_vert_idx + 0u] = v0;
         vertices[start_vert_idx + 1u] = v1;
@@ -123,7 +122,7 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
             break;
         }
     }
-    
+
 }
 
 

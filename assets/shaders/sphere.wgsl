@@ -6,6 +6,6 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let dim = vec3<f32>(textureDimensions(sphere));
     let x = pos - dim / 2.;
     let y = max(length(x), 0.001); // avoids the zero and should avoid branching
-    let value = vec4<f32>(20. / y);  // there's probably a nice way to compute this magic number
+    let value = vec4<f32>(5. / y);  // there's probably a nice way to compute this magic number
     textureStore(sphere, invocation_id, value);
 }

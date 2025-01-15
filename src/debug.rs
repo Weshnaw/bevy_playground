@@ -12,7 +12,7 @@ use bevy_egui::{
     egui::{self, Ui},
 };
 
-use crate::gen_voxels::CHUNK_SIZE;
+use crate::shader::CHUNK_SIZE;
 
 // use crate::compute::CHUNK_SIZE;
 pub struct DebugPlugin;
