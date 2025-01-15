@@ -48,9 +48,15 @@ struct VertexBuffers {
     normals: Handle<ShaderStorageBuffer>,
     #[storage(5, visibility(compute))]
     uvs: Handle<ShaderStorageBuffer>,
+    #[storage(6, visibility(compute))]
+    debug: Handle<ShaderStorageBuffer>,
 }
 
-const CHUNK_SIZE3: usize = CHUNK_SIZE as usize * CHUNK_SIZE as usize * CHUNK_SIZE as usize * 3 * 8;
+// Number of voxels * 3 vertices * 8 possible connections
+// Not sure if this math is actually accurate
+const VERTEX_BUFFER_SIZE: usize =
+    CHUNK_SIZE as usize * CHUNK_SIZE as usize * CHUNK_SIZE as usize * 3 * 8;
+
 #[derive(ShaderType, Debug, Default)]
 struct VertexData {
     index_head: u32,
@@ -72,32 +78,47 @@ fn setup(
     let mut data = ShaderStorageBuffer::from(data);
     data.buffer_description.usage |= BufferUsages::COPY_SRC;
     let data = buffers.add(data);
-    let vertices: Vec<PaddedVec3> = vec![PaddedVec3::default(); CHUNK_SIZE3];
+    let vertices: Vec<PaddedVec3> = vec![PaddedVec3::default(); VERTEX_BUFFER_SIZE];
     let mut vertices = ShaderStorageBuffer::from(vertices);
     vertices.buffer_description.usage |= BufferUsages::COPY_SRC;
     let vertices = buffers.add(vertices);
-    let indices: Vec<u32> = vec![0; CHUNK_SIZE3];
+    let indices: Vec<u32> = vec![0; VERTEX_BUFFER_SIZE];
     let mut indices = ShaderStorageBuffer::from(indices);
     indices.buffer_description.usage |= BufferUsages::COPY_SRC;
     let indices = buffers.add(indices);
-    let normals: Vec<PaddedVec3> = vec![PaddedVec3::default(); CHUNK_SIZE3];
+    let normals: Vec<PaddedVec3> = vec![PaddedVec3::default(); VERTEX_BUFFER_SIZE];
     let mut normals = ShaderStorageBuffer::from(normals);
     normals.buffer_description.usage |= BufferUsages::COPY_SRC;
     let normals = buffers.add(normals);
-    let uvs: Vec<Vec2> = vec![Vec2::default(); CHUNK_SIZE3];
+    let uvs: Vec<Vec2> = vec![Vec2::default(); VERTEX_BUFFER_SIZE];
     let mut uvs = ShaderStorageBuffer::from(uvs);
     uvs.buffer_description.usage |= BufferUsages::COPY_SRC;
     let uvs = buffers.add(uvs);
+    let debug: Vec<f32> = vec![0.; 8];
+    let mut debug = ShaderStorageBuffer::from(debug);
+    debug.buffer_description.usage |= BufferUsages::COPY_SRC;
+    let debug = buffers.add(debug);
 
     commands.spawn(Readback::buffer(data.clone())).observe(
         |trigger: Trigger<ReadbackComplete>, mut commands: Commands| {
             let data: VertexData = trigger.event().to_shader_type();
+            info_once!(?data);
             if data.index_head != 0 {
-                info!(?data.index_head);
+                info!(?data);
                 commands.entity(trigger.entity()).despawn();
             }
         },
     );
+    // commands.spawn(Readback::buffer(debug.clone())).observe(
+    //     |trigger: Trigger<ReadbackComplete>, mut commands: Commands| {
+    //         let data: Vec<f32> = trigger.event().to_shader_type();
+    //         info_once!(?data);
+    //         if data[0] != 0. {
+    //             info!(?data);
+    //             commands.entity(trigger.entity()).despawn();
+    //         }
+    //     },
+    // );
 
     commands.insert_resource(VertexBuffers {
         voxels: gen_buffers.voxels.clone(),
@@ -106,6 +127,7 @@ fn setup(
         indices,
         normals,
         uvs,
+        debug,
     });
 }
 

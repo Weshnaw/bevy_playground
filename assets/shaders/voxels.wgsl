@@ -17,10 +17,12 @@ var<storage, read_write> indices: array<u32>;
 var<storage, read_write> normals: array<vec3<f32>>;
 @group(0) @binding(5)
 var<storage, read_write> uvs: array<vec2<f32>>;
+@group(0) @binding(6)
+var<storage, read_write> debug: array<f32>;
 
 fn clamp(pos: vec3<u32>, max: vec3<u32>) -> f32 {
-    if pos.x >= 0    && pos.y >= 0    && pos.z >= 0 &&
-       pos.x < max.x && pos.y < max.y && pos.z < pos.z {
+    if ((pos.x >= 0)    && (pos.y >= 0)    && (pos.z >= 0) &&
+        (pos.x < max.x) && (pos.y < max.y) && (pos.z < max.z)) {
         let voxel = textureLoad(voxels, pos);
         return voxel.x;
     }
@@ -33,7 +35,7 @@ fn interp_vertex(p1: vec3<f32>, p2: vec3<f32>, v1: f32, v2: f32) -> vec3<f32> {
     return p1 + mu * (p2 - p1);
 }
 
-@compute @workgroup_size(8, 8, 8)
+@compute @workgroup_size(1)
 fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
     let positions = array(
         vec3<f32>(invocation_id + OFFSET_LOOKUP[0u]),
@@ -56,6 +58,20 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         clamp(invocation_id + OFFSET_LOOKUP[6u], dim),
         clamp(invocation_id + OFFSET_LOOKUP[7u], dim),
     );
+
+    // let debug_pos = vec3<u32>(16, 16, 16);
+    // debug[0u] = textureLoad(voxels, debug_pos).x;
+    // debug[1u] = clamp(debug_pos, dim);
+    // debug[2u] = f32(dim.x);
+    // debug[3u] = f32(debug_pos.z >= 0);
+    // debug[4u] = f32(debug_pos.z < dim.z);
+    // debug[5u] = densities[5u];
+    // debug[6u] = densities[6u];
+    // debug[7u] = densities[7u];
+
+    // if(true) {
+    //     return;
+    // }
 
     var cube_idx: u32 = 0u;
     cube_idx = cube_idx | u32(densities[0u] < 0.5) * (1u << 0u);

@@ -1,7 +1,7 @@
 use bevy::{
     prelude::*,
     render::{
-        RenderApp,
+        Render, RenderApp, RenderSet,
         render_graph::{self, RenderGraph, RenderLabel},
         render_resource::{
             BindGroupLayout, CachedComputePipelineId, CachedPipelineState, ComputePassDescriptor,
@@ -10,6 +10,7 @@ use bevy::{
         renderer::RenderContext,
     },
 };
+use crossbeam_channel::{Receiver, Sender};
 
 use super::{
     CHUNK_SIZE,
@@ -24,12 +25,28 @@ impl Plugin for ShaderRenderPlugin {
     }
 
     fn finish(&self, app: &mut App) {
+        let (s, r) = crossbeam_channel::unbounded();
         let render_app = app.sub_app_mut(RenderApp);
 
         render_app
+            .insert_resource(ComputeShaderStateSender(s))
+            .insert_resource(ComputeShaderStateReceiver(r))
+            .add_systems(Render, test_state.after(RenderSet::Render))
             .world_mut()
             .resource_mut::<RenderGraph>()
             .add_node(ComputeNodeLabel, ComputeNode::default());
+    }
+}
+
+#[derive(Resource)]
+struct ComputeShaderStateReceiver(Receiver<ComputeShaderStage>);
+#[derive(Resource)]
+struct ComputeShaderStateSender(Sender<ComputeShaderStage>);
+
+fn test_state(state: Res<ComputeShaderStateReceiver>) {
+    if let Ok(state) = state.0.try_recv() {
+        info!(?state);
+        // TODO render objects here / or send buffer data to main land / or  move this to main world and see if the buffers already contain the correct data
     }
 }
 
@@ -40,6 +57,12 @@ pub struct PipelineGroup {
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
 struct ComputeNodeLabel;
+
+#[derive(Debug)]
+enum ComputeShaderStage {
+    Starting,
+    StartupComplete,
+}
 
 #[derive(Default)]
 pub(super) enum ShaderStage {
@@ -60,13 +83,20 @@ impl render_graph::Node for ComputeNode {
         let pipeline_cache = world.resource::<PipelineCache>();
         let gen_pipeline = world.resource::<generate::ComputePipeline>();
         let vert_pipeline = world.resource::<vertices::ComputePipeline>();
+        let compute_shader_state = world.resource::<ComputeShaderStateSender>();
 
         match self.stage {
             ShaderStage::Loading => {
                 let state = pipeline_cache.get_compute_pipeline_state(gen_pipeline.sphere.pipeline);
 
                 match state {
-                    CachedPipelineState::Ok(_) => self.stage = ShaderStage::GenerateVoxels,
+                    CachedPipelineState::Ok(_) => {
+                        self.stage = ShaderStage::GenerateVoxels;
+                        compute_shader_state
+                            .0
+                            .try_send(ComputeShaderStage::Starting)
+                            .expect("Failed to send shader stage");
+                    }
                     CachedPipelineState::Err(err) => panic!("Unable to load pipeline\n{}", err),
                     _ => {}
                 }
@@ -86,6 +116,10 @@ impl render_graph::Node for ComputeNode {
                 let state = pipeline_cache.get_compute_pipeline_state(gen_pipeline.slice.pipeline);
 
                 if let CachedPipelineState::Ok(_) = state {
+                    compute_shader_state
+                        .0
+                        .try_send(ComputeShaderStage::StartupComplete)
+                        .expect("Failed to send shader stage");
                     self.stage = ShaderStage::Update
                 }
             }
